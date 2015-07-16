@@ -1,0 +1,13 @@
+\#*
+.\#*
+.tox
+.*sw?
+.testrepository
+AUTHORS
+ChangeLog
+build
+dist
+*egg-info
+exported-artifacts
+logs
+mocker*

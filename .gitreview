@@ -1,0 +1,4 @@
+[gerrit]
+defaultbranch=master
+host=gerrit.ovirt.org
+project=fabric-ovirt.git

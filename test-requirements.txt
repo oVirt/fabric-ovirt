@@ -1,2 +1,5 @@
+pep8
+six
+python-subunit
 testrepository
 flake8

@@ -2,6 +2,7 @@
 .\#*
 .tox
 .*sw?
+*.py?
 .testrepository
 AUTHORS
 ChangeLog

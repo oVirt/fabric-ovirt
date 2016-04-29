@@ -2,6 +2,7 @@
 
 SAME_RPM_NAME=(
     fabric
+    python-foreman
 )
 
 is_in() {

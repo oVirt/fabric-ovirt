@@ -4,3 +4,4 @@ openssl-devel
 python-pbr
 python-setuptools
 yum
+python-foreman

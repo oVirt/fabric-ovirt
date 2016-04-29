@@ -1,3 +1,6 @@
 argparse
 pbr>=0.8.2,<2.0
 fabric
+python-foreman
+# only rpm
+#lxml

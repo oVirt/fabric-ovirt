@@ -4,7 +4,11 @@
 Tasks to manage the hostname of a machine
 """
 
-from fabric.api import task, run
+from fabric.api import (
+    task,
+    run,
+    execute,
+)
 
 
 @task(default=True)
@@ -18,8 +22,12 @@ def hset(hostname, old_hostname=None):
         Old hostname to clean up when setting the new, deafult = None
     """
     run("hostname %s" % hostname)
-    run("sed -i '/HOSTNAME=.*/d' /etc/sysconfig/network")
-    run("echo 'HOSTNAME=%s' >> /etc/sysconfig/network" % hostname)
+    if 'Fedora' in execute('system.distro.get'):
+        run("echo '%s' > /etc/hostname" % hostname)
+    else:
+        run("sed -i '/HOSTNAME=.*/d' /etc/sysconfig/network")
+        run("echo 'HOSTNAME=%s' >> /etc/sysconfig/network" % hostname)
+
     if old_hostname:
         run(r"sed -i 's/[[:space:]]%s\([[:space:]]\|$\)/ %s /g' /etc/hosts"
             % (old_hostname, hostname))

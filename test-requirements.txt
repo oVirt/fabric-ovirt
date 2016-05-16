@@ -1,6 +1,12 @@
 pycodestyle
 pep8
 six
+pytest
+mock<=1.0.1
+testtools<2.0.0
+extras
+pyrsistent
 python-subunit
 testrepository
+configparser
 flake8

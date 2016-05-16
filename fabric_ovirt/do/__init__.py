@@ -1,2 +1,6 @@
 #!/usr/bin/env python
-import system  # noqa
+from . import (  # noqa
+    system,
+    virt,
+    ovirt,
+)

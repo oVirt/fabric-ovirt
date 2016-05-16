@@ -9,6 +9,8 @@ ChangeLog
 build
 dist
 *egg-info
+*egg
 exported-artifacts
 logs
 mocker*
+.cache

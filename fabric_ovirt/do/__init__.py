@@ -3,4 +3,5 @@ from . import (  # noqa
     system,
     virt,
     ovirt,
+    vm_images,
 )

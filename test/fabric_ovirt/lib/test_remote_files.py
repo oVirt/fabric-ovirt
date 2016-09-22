@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 """test_remote_files.py - Tests for fabric_ovirt.lib.remote_files
 """
-from mock import MagicMock, NonCallableMagicMock, patch
+from mock import MagicMock, NonCallableMagicMock, patch, call
 import pytest
 from itertools import izip
 from urlparse import urljoin
 from operator import eq, lt, gt, ne
+from random import randrange
+from hashlib import md5
 
 from fabric_ovirt.lib import remote_files
 
@@ -35,21 +37,50 @@ def some_file_url():
 def test_file_digest(some_hexdigest, mock_digest_algo):
     fd = remote_files.file_digest(
         hexdigest=some_hexdigest,
-        algorithem=mock_digest_algo,
+        algorithm=mock_digest_algo,
     )
     assert fd.hexdigest == some_hexdigest
-    assert fd.algorithem == mock_digest_algo
+    assert fd.algorithm == mock_digest_algo
     fd = remote_files.file_digest(some_hexdigest, mock_digest_algo)
     assert fd.hexdigest == some_hexdigest
-    assert fd.algorithem == mock_digest_algo
+    assert fd.algorithm == mock_digest_algo
 
 
 @pytest.fixture
 def some_file_digest(some_hexdigest, mock_digest_algo):
     return remote_files.file_digest(
         hexdigest=some_hexdigest,
-        algorithem=mock_digest_algo,
+        algorithm=mock_digest_algo,
     )
+
+
+@pytest.fixture
+def mock_http_with_file(request):
+    content = ''.join(
+        chr(randrange(0, 256))
+        for x in xrange(0, 1024 * randrange(3, 10) + randrange(0, 1024))
+    )
+
+    def iter_content(chunk_size=1024):
+        for i in xrange(0, len(content), chunk_size):
+            yield content[i:i + chunk_size]
+
+    mock_response = NonCallableMagicMock()
+    mock_response.iter_content = MagicMock(side_effect=iter_content)
+    mock_requests = NonCallableMagicMock()
+    mock_requests.get = MagicMock(return_value=mock_response)
+    mock_requests._mock_response = mock_response
+    mock_requests._content = content
+
+    patcher = patch(
+        target='fabric_ovirt.lib.remote_files.requests',
+        new=mock_requests,
+    )
+
+    def finalizer():
+        patcher.stop()
+
+    return patcher.start()
 
 
 class TestRemoteFile(object):
@@ -121,6 +152,35 @@ class TestRemoteFile(object):
         img_b = remote_files.RemoteFile(b_name, b_url, b_digest)
         assert expected_relation(hash(img_a), hash(img_b))
 
+    def test_download(self, mock_http_with_file):
+        rf = remote_files.RemoteFile('nnn', 'http://xxx/yyy')
+        with rf.download() as result_tf:
+            assert 1 == mock_http_with_file.get.call_count
+            assert (
+                call('http://xxx/yyy', stream=True) ==
+                mock_http_with_file.get.call_args
+            )
+            resp = mock_http_with_file._mock_response
+            assert resp.raise_for_status.called
+            assert resp.iter_content.called
+            assert mock_http_with_file._content == result_tf.read()
+        rf = remote_files.RemoteFile(
+            'nnn', 'http://xxx/yyy', remote_files.file_digest(
+                md5(mock_http_with_file._content).hexdigest(), md5
+            )
+        )
+        with rf.download() as result_tf:
+            assert mock_http_with_file._content == result_tf.read()
+        rf = remote_files.RemoteFile(
+            'nnn', 'http://xxx/yyy', remote_files.file_digest(
+                'bad_digest_value', md5
+            )
+        )
+        with pytest.raises(remote_files.BadFileDigest):
+            rf.download()
+        with rf.download(verify_digest=False) as result_tf:
+            assert mock_http_with_file._content == result_tf.read()
+
 
 @pytest.fixture
 def mock_digests_and_files(mock_digest_algo):
@@ -167,5 +227,5 @@ def test_from_http_with_digest_file(
         exp_digest, exp_file = expected
         assert rf.name == exp_file
         assert rf.digest.hexdigest == exp_digest
-        assert rf.digest.algorithem == mock_digest_algo
+        assert rf.digest.algorithm == mock_digest_algo
         assert rf.url == urljoin(digest_file_url, exp_file)

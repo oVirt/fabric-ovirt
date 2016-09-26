@@ -2,10 +2,17 @@
 """remote_files.py - Module for listing and getting remote files
 """
 import hashlib
-from collections import namedtuple
+from collections import namedtuple, MutableSet
 import requests
 from urlparse import urljoin
 from tempfile import NamedTemporaryFile
+try:
+    import glanceclient
+    import keystoneclient
+except ImportError:
+    # Just make Glance functionality broken if client libraries are not
+    # instsalled
+    pass
 
 
 file_digest = namedtuple('file_digest', ('hexdigest', 'algorithm'))
@@ -106,3 +113,142 @@ def from_http_with_digest_file(digest_file_url, digest_algo=hashlib.sha256):
             url=urljoin(digest_file_url, file_name),
             digest=file_digest(hexdigest=digest, algorithm=digest_algo)
         )
+
+
+class Glance(MutableSet):
+    """Representing Glance as a mutable set of files
+
+    :param str image_url:   (Optional) URL of the Glance image service API
+    :param str auth_token:  (Optional) OpenStack authentication token
+    :param str auth_url:    (Optional) URL of Keystone service
+    :param str tenant_name: (Optional) OpenStack tenant for authentication
+    :param str username:    (Optional) Username for authentication
+    :param str password:    (Optional) Password for authentication
+
+    Service usage credintials must be specified by either passing auth_token or
+    auth_url, tenant_name, username and password. If none are given, an attempt
+    to use Glance anonymously would be made.
+    If image_url is not given, auth_url must be passed so that Keystone can be
+    queried for the image service endpoint.
+
+    Examples:
+        - Connect anonymously to a Glance server that allows it:
+
+            Glance(image_url='http://glance.ovirt.org:9292')
+
+        - Connect while authenticating via Keystone:
+
+            Glance(
+                auth_url='http://glance.ovirt.org:35357/v2.0',
+                tenant_name='service',
+                username='glance',
+                password='...',
+            )
+    """
+    def __init__(
+        self, image_url=None, auth_token=None, auth_url=None, tenant_name=None,
+        username=None, password=None
+    ):
+        ks_session = None
+        if auth_token is None:
+            if (
+                auth_url is None or tenant_name is None or
+                username is None or password is None
+            ):
+                auth_token = '-anonymous-'
+            else:
+                ks_auth = keystoneclient.auth.identity.v2.Password(
+                    auth_url=auth_url,
+                    username=username,
+                    password=password,
+                    tenant_name=tenant_name,
+                )
+                ks_session = keystoneclient.session.Session(auth=ks_auth)
+                auth_token = ks_session.get_token()
+        if image_url is None:
+            if ks_session is None:
+                if auth_url:
+                    ks_auth = keystoneclient.auth.identity.v2.Token(
+                        auth_url=auth_url,
+                        token=auth_token
+                    )
+                else:
+                    raise TypeError('Must pass either image_url or auth_url')
+                ks_session = keystoneclient.session.Session(auth=ks_auth)
+            image_url = ks_session.get_endpoint(
+                service_type='image', interface='public'
+            )
+        self.gcl = glanceclient.Client(
+            '2', endpoint=image_url, token=auth_token
+        )
+        self._data = {}
+        self.refresh()
+
+    def refresh(self):
+        """Refresh files from Glance"""
+        self._data.clear()
+        for glance_img in self.gcl.images.list():
+            self._add_glance_image(glance_img)
+
+    def add(self, fil):
+        """Add file to glance"""
+        self._add(fil)
+
+    def _add(self, fil, **extra_args):
+        """Private add implementation that allows for finer grained control on
+        Glance data
+        """
+        if fil in self:
+            return
+        # Set default assumed values for mandatory arguments
+        extra_args.setdefault('disk_format', 'raw')
+        extra_args.setdefault('container_format', 'bare')
+        gli = self.gcl.images.create(name=fil.name, **extra_args)
+        self.gcl.images.upload(gli.id, fil.download())
+        self._add_glance_image(gli)
+
+    def _add_glance_image(self, gli):
+        fil = self._glance_image_to_member(gli)
+        if fil is not None:
+            self._data[fil] = gli.id
+
+    def _glance_image_to_member(self, gli):
+        if 'name' not in gli or 'file' not in gli:
+            # Skip broken image objects
+            return
+        if 'checksum' in gli:
+            digest = file_digest(gli.checksum, hashlib.md5)
+        else:
+            digest = None
+        return RemoteFile(
+            gli.name,
+            urljoin(self.gcl.http_client.endpoint, gli.file),
+            digest
+        )
+
+    def discard(self, fil):
+        """Remove file from Glance"""
+        gli_id = self._data.get(fil)
+        if gli_id is not None:
+            self.gcl.images.delete(gli_id)
+            self._data.pop(fil, None)
+
+    def __contains__(self, fil):
+        return fil in self._data
+
+    def __iter__(self):
+        return self._data.iterkeys()
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return repr(set(self._data.iterkeys()))
+
+    # Enable binary non-mutating opertators to return plain sets
+    @classmethod
+    def _from_iterable(cls, it):
+        return set(it)
+
+
+from_glance = Glance

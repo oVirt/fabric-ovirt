@@ -4,10 +4,11 @@
 import pytest
 from hashlib import md5
 from operator import eq, lt, gt, ne
+from itertools import izip
 
 from fabric_ovirt.lib import remote_images
 from fabric_ovirt.lib.remote_images import (
-    RemoteImage, file_digest, LooseVersion
+    RemoteImage, file_digest, LooseVersion, Glance
 )
 from fabric_ovirt.lib.remote_files import RemoteFile
 
@@ -292,3 +293,53 @@ def test_from_files_by_regex(filenames, regex, kwargs, expected):
     )
     result = remote_images.from_files_by_regex(files, regex, **kwargs)
     assert expected == [o for o in result]
+
+
+class TestGlance(object):
+    def test_files_to_images(self):
+        file_data = (
+            'CentOS 6 Generic Cloud Image v1608 for x86_64',
+            'CentOS 6.5 64-Bit',
+            'CentOS 7 Atomic Host Image v1607 for x86_64',
+            'CentOS 7 Generic Cloud Image v1608 for x86_64',
+            'CirrOS 0.3.1',
+            'CirrOS 0.3.3 for x86_64',
+            'Fedora 22 Cloud Atomic Image',
+            'Fedora 23 Cloud Atomic Image v20151030 for x86_64',
+            'Fedora 24 Cloud Atomic Image v20160820 for x86_64',
+            'Fedora 24 Cloud Base Image v1.2 for x86_64',
+            'Fedora 24 Cloud Base Image v20160721 for x86_64',
+            'Ubuntu 16.04 LTS (Xenial Xerus) Cloud v20160909 for x86_64',
+        )
+        image_data = (
+            ('CentOS 6 Generic Cloud Image', '1608', 'x86_64'),
+            None,
+            ('CentOS 7 Atomic Host Image', '1607', 'x86_64'),
+            ('CentOS 7 Generic Cloud Image', '1608', 'x86_64'),
+            None,
+            ('CirrOS', '0.3.3', 'x86_64'),
+            None,
+            ('Fedora 23 Cloud Atomic Image', '20151030', 'x86_64'),
+            ('Fedora 24 Cloud Atomic Image', '20160820', 'x86_64'),
+            ('Fedora 24 Cloud Base Image', '1.2', 'x86_64'),
+            ('Fedora 24 Cloud Base Image', '20160721', 'x86_64'),
+            ('Ubuntu 16.04 LTS (Xenial Xerus) Cloud', '20160909', 'x86_64'),
+        )
+        files = (
+            RemoteFile(name, 'u/{}'.format(idx), file_digest('foo', md5))
+            for idx, name in enumerate(file_data)
+        )
+        expected_images = [
+            RemoteImage(
+                name, 'u/{}'.format(idx), image_name, LooseVersion(version),
+                arch, None, file_digest('foo', md5)
+            )
+            for idx, name, image_name, version, arch
+            in (
+                (i, fdat) + idat for i, (fdat, idat)
+                in enumerate(izip(file_data, image_data))
+                if idat
+            )
+        ]
+        converted_images = [img for img in Glance._files_to_images(files)]
+        assert expected_images == converted_images

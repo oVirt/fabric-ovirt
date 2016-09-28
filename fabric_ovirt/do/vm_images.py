@@ -21,5 +21,5 @@ def list_images(source):
     """
     if source not in remote_images.sources:
         abort('No such image source "{}"'.format(source))
-    for img in remote_images.list_from(source):
+    for img in sorted(remote_images.list_from(source)):
         puts(img.name)

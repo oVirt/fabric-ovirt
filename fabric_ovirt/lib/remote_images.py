@@ -4,6 +4,7 @@
 from distutils.version import LooseVersion
 import re
 from collections import Mapping
+from functools import partial
 
 from fabric_ovirt.lib.remote_files import RemoteFile, file_digest
 from fabric_ovirt.lib import remote_files
@@ -202,3 +203,39 @@ def from_centos_atomic7():
         image_name='CentOS 7 Atomic Host Image',
         arch='x86_64',
     )
+
+
+class Glance(remote_files.Glance):
+    def refresh(self):
+        super(Glance, self).refresh()
+        self._convert_files_to_images()
+
+    def add(self, img):
+        self._add(img)
+
+    def _add(self, img, **extra_args):
+        extra_args.setdefault('disk_format', 'qcow2')
+        extra_args.setdefault('container_format', 'bare')
+        extra_args.setdefault('visibility', 'public')
+        super(Glance, self)._add(img, **extra_args)
+        self._convert_files_to_images()
+
+    def _convert_files_to_images(self):
+        """Convert RemoteFile object to RemoteImage"""
+        files = [obj for obj in self if obj is not RemoteImage]
+        id_map = {}
+        for fil in files:
+            id_map[fil.url] = self._data.pop(fil)
+        for img in self._files_to_images(files):
+            self._data[img] = id_map[img.url]
+
+    @staticmethod
+    def _files_to_images(files):
+        regex = '^(?P<image_name>.+) v?(?P<version>[\d\.]+) for (?P<arch>.+)$'
+        return from_files_by_regex(files=files, regex=regex)
+
+
+from_glance = Glance
+from_ovirt_glance = _image_source("oVirt Glance")(
+    partial(Glance, image_url='http://glance.ovirt.org:9292')
+)

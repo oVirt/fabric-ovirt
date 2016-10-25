@@ -283,6 +283,31 @@ class TestRemoteImage(object):
                 ),
             ]
         ),
+        (
+            (
+                'cirros-0.3.1-i386-disk.img',
+                'cirros-0.3.1-i386-kernel',
+                'cirros-0.3.1-x86_64-disk.img',
+                'cirros-0.3.1-x86_64-kernel',
+            ),
+            '^cirros-(?P<version>.+)-x86_64-disk\.img$',
+            dict(
+                name='CirrOS \g<version> for x86_64',
+                image_name='CirrOS',
+                arch='x86_64',
+            ),
+            [
+                RemoteImage(
+                    name='CirrOS 0.3.1 for x86_64',
+                    url='u/cirros-0.3.1-x86_64-disk.img',
+                    digest=file_digest('abdcdef1234567890', md5),
+                    image_name='CirrOS',
+                    version=LooseVersion('0.3.1'),
+                    revision=None,
+                    arch='x86_64'
+                ),
+            ]
+        ),
     ]
 )
 def test_from_files_by_regex(filenames, regex, kwargs, expected):

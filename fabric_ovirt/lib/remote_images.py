@@ -5,7 +5,11 @@ from distutils.version import LooseVersion
 import re
 from collections import Mapping
 from functools import partial
+from itertools import chain
+import requests
+import hashlib
 
+from fabric_ovirt.lib.html import find_hrefs_in_stream
 from fabric_ovirt.lib.remote_files import RemoteFile, file_digest
 from fabric_ovirt.lib import remote_files
 
@@ -239,3 +243,24 @@ from_glance = Glance
 from_ovirt_glance = _image_source("oVirt Glance")(
     partial(Glance, image_url='http://glance.ovirt.org:9292')
 )
+
+
+@_image_source("Cirros")
+def from_cirros():
+    dl_cirrus = 'http://download.cirros-cloud.net/'
+    resp = requests.get(dl_cirrus, stream=True)
+    resp.raise_for_status()
+    rel_dir = re.compile('^\d+\.\d+\.\d+/')
+    return chain.from_iterable(
+        from_files_by_regex(
+            files=remote_files.from_http_with_digest_file(
+                dl_cirrus + href + 'MD5SUMS', hashlib.md5
+            ),
+            regex='^cirros-(?P<version>.+)-x86_64-disk\.img$',
+            name='CirrOS \g<version> for x86_64',
+            image_name='CirrOS',
+            arch='x86_64',
+        )
+        for href in find_hrefs_in_stream(resp)
+        if rel_dir.match(href)
+    )

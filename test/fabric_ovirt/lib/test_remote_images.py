@@ -308,6 +308,40 @@ class TestRemoteImage(object):
                 ),
             ]
         ),
+        (
+            (
+                'Fedora-Cloud-Atomic-23-20151030.x86_64.qcow2',
+                'Fedora-Cloud-Base-23-20151030.x86_64.qcow2',
+                'Fedora-Cloud-Atomic-23-20151030.x86_64.raw.xz',
+                'Fedora-Cloud-Base-23-20151030.x86_64.raw.xz',
+            ),
+            '^Fedora-Cloud-(?P<ityp>.+)-23-(?P<version>.+).x86_64.qcow2$',
+            dict(
+                name='Fedora 23 Cloud \g<ityp> Image v\g<version> for x86_64',
+                image_name='Fedora 23 Cloud \g<ityp> Image',
+                arch='x86_64',
+            ),
+            [
+                RemoteImage(
+                    name='Fedora 23 Cloud Atomic Image v20151030 for x86_64',
+                    url='u/Fedora-Cloud-Base-23-20151030.x86_64.qcow2',
+                    digest=file_digest('abdcdef1234567890', md5),
+                    image_name='Fedora 23 Cloud Atomic Image',
+                    version=LooseVersion('20151030'),
+                    revision=None,
+                    arch='x86_64'
+                ),
+                RemoteImage(
+                    name='Fedora 23 Cloud Base Image v20151030 for x86_64',
+                    url='u/Fedora-Cloud-Atomic-23-20151030.x86_64.qcow2',
+                    digest=file_digest('abdcdef1234567890', md5),
+                    image_name='Fedora 23 Cloud Base Image',
+                    version=LooseVersion('20151030'),
+                    revision=None,
+                    arch='x86_64'
+                ),
+            ]
+        ),
     ]
 )
 def test_from_files_by_regex(filenames, regex, kwargs, expected):

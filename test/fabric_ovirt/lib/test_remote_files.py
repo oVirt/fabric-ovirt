@@ -7,7 +7,8 @@ from itertools import izip
 from urlparse import urljoin
 from operator import eq, lt, gt, ne
 from random import randrange
-from hashlib import md5
+from hashlib import md5, sha256
+from textwrap import dedent
 
 from fabric_ovirt.lib import remote_files
 
@@ -210,6 +211,73 @@ def mock_http_with_digest_file(request, mock_digests_and_files):
     return patcher.start()
 
 
+@pytest.mark.parametrize(
+    ('lines_str', 'expected_str'),
+    [
+        ('', ''),
+        ('foo bar', 'foo bar'),
+        (
+            """
+            -----BEGIN PGP SIGNED MESSAGE-----
+            Hash: SHA1
+
+            foo bar
+            baz
+            -----BEGIN PGP SIGNATURE-----
+            Version: GnuPG v2.0.22 (GNU/Linux)
+
+            iQEcBAEBAgAGBQJYFerUAAoJEL/8m8Zq8UyXmykH/3Py0H98v2VTeiBA1Lp20AvA
+            MvKlVNuGnHMZ6v3zAi+872vi01Izd7tKHrvvshFP5K9wDdi7712kzNSVQJ5ZYTOY
+            su5cig2hlY2HBbO0mWSvb+2mFkFHlBLKrAtyJIiNmcLlG/r4KDRlaQ0QTbzbHAHf
+            Mzw/sUv6ffMhn/TSMWBt2R9atcO3eZnwK+xQ4Fe9zuVFx37N77fKF5TmHav2WlvD
+            k33OAOpe6sRN+MwKbGbsGNCUPo5E9SOSWjrH9uzDG6e5mg2Nvgj9GTDeNjtElle+
+            BVmahXARMF26rW4wO4WnUfUBViwg+5p4otEOnAz7D3Og86rlf8wE5Ge7vsoXPhc=
+            =GFNY
+            -----END PGP SIGNATURE-----
+            """,
+            """
+            foo bar
+            baz
+            """
+        ),
+        (
+            """
+            unsigned text
+            -----BEGIN PGP SIGNED MESSAGE-----
+            Hash: SHA1
+
+            signed text
+            -----BEGIN PGP SIGNATURE-----
+            does not really matter
+            -----END PGP SIGNATURE-----
+            more unsigned text
+            -----BEGIN PGP SIGNED MESSAGE-----
+            Hash: SHA1
+
+            more signed text
+            -----BEGIN PGP SIGNATURE-----
+            does not really matter
+            -----END PGP SIGNATURE-----
+            even more unsigned text
+            """,
+            """
+            unsigned text
+            signed text
+            more unsigned text
+            more signed text
+            even more unsigned text
+            """
+        ),
+    ]
+)
+def test__strip_gpg_wrappers(lines_str, expected_str):
+    lines = dedent(lines_str).lstrip().splitlines(True)
+    expected = dedent(expected_str).lstrip().splitlines(True)
+    output_i = remote_files._strip_gpg_wrappers(lines)
+    output = list(output_i)
+    assert expected == output
+
+
 def test_from_http_with_digest_file(
     mock_digests_and_files, mock_digest_algo, mock_http_with_digest_file
 ):
@@ -229,3 +297,33 @@ def test_from_http_with_digest_file(
         assert rf.digest.hexdigest == exp_digest
         assert rf.digest.algorithm == mock_digest_algo
         assert rf.url == urljoin(digest_file_url, exp_file)
+
+
+@pytest.mark.parametrize(
+    ('lines_str', 'expected_rf_data'),
+    [
+        (
+            """
+            SHA256 (foo.qcow2) = foo_hash
+            SHA256 (bar.qcow2) = bar_hash
+            """,
+            (
+                ('foo.qcow2', 'u/foo.qcow2', 'foo_hash', sha256),
+                ('bar.qcow2', 'u/bar.qcow2', 'bar_hash', sha256),
+            )
+        ),
+    ]
+)
+def test__from_fedora_file_lines(lines_str, expected_rf_data):
+    lines = dedent(lines_str).lstrip().splitlines(True)
+    expected = tuple(
+        remote_files.RemoteFile(
+            name,
+            url,
+            remote_files.file_digest(digest, algo)
+        )
+        for name, url, digest, algo in expected_rf_data
+    )
+    output_i = remote_files._from_fedora_file_lines('u/u', lines)
+    output = tuple(output_i)
+    assert expected == output

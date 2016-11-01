@@ -6,6 +6,7 @@ from collections import namedtuple, MutableSet
 import requests
 from urlparse import urljoin
 from tempfile import NamedTemporaryFile
+import re
 try:
     import glanceclient
     import keystoneclient
@@ -93,6 +94,46 @@ class RemoteFile(object):
         return tmp
 
 
+def _strip_gpg_wrappers(lines):
+    """Strip GPG signiture headers and blocks from input lines
+
+    :param Iterable lines: Lines of text
+    :rtype: Iterator
+    :returns: Iterator over non-signiture or header lines
+    """
+    MBEGIN = '-----BEGIN PGP SIGNED MESSAGE-----'
+    SBEGIN = '-----BEGIN PGP SIGNATURE-----'
+    SEND = '-----END PGP SIGNATURE-----'
+
+    line_i = iter(lines)
+    try:
+        while True:
+            line = next(line_i)
+            while line.rstrip() != MBEGIN:
+                yield line
+                line = next(line_i)
+            next(line_i)
+            next(line_i)
+            line = next(line_i)
+            while line.rstrip() != SBEGIN:
+                yield line
+                line = next(line_i)
+            while line.rstrip() != SEND:
+                line = next(line_i)
+    except StopIteration:
+        pass
+
+
+def _from_digest_file_lines(digest_file_url, lines, digest_algo):
+    for line in lines:
+        digest, file_name = line.split()
+        yield RemoteFile(
+            name=file_name,
+            url=urljoin(digest_file_url, file_name),
+            digest=file_digest(hexdigest=digest, algorithm=digest_algo)
+        )
+
+
 def from_http_with_digest_file(digest_file_url, digest_algo=hashlib.sha256):
     """List files in a remote HTTP directory that includes a hash digest file
 
@@ -106,13 +147,47 @@ def from_http_with_digest_file(digest_file_url, digest_algo=hashlib.sha256):
     """
     resp = requests.get(digest_file_url, stream=True)
     resp.raise_for_status()
-    for line in resp.iter_lines():
-        digest, file_name = line.split()
+    for remote_file in _from_digest_file_lines(
+        digest_file_url, _strip_gpg_wrappers(resp.iter_lines()), digest_algo
+    ):
+        yield remote_file
+
+
+def _from_fedora_file_lines(digest_file_url, lines):
+    """Given lines of a Fedora digest file, return listed remote files
+    """
+    FEDRE = re.compile('^(?P<algo>[A-Z0-9]+) \((?P<name>.+)\) = (?P<hash>.+)$')
+    for line in lines:
+        mtc = FEDRE.match(line)
+        if not mtc:
+            continue
+        algo_name = mtc.group('algo').lower()
+        if algo_name in hashlib.algorithms:
+            algo = getattr(hashlib, algo_name)
+        else:
+            continue
         yield RemoteFile(
-            name=file_name,
-            url=urljoin(digest_file_url, file_name),
-            digest=file_digest(hexdigest=digest, algorithm=digest_algo)
+            name=mtc.group('name'),
+            url=urljoin(digest_file_url, mtc.group('name')),
+            digest=file_digest(mtc.group('hash'), algo)
         )
+
+
+def from_http_with_fedora_file(digest_file_url):
+    """List files in a remote HTTP directory that includes a Fedora style
+    digest file
+
+    :param str digest_file_url:  The url of the file that lists the files in
+                                 the same directory and their hashes
+    :rtype: Iterator
+    :returns: Iterator of files listed in the digest file
+    """
+    resp = requests.get(digest_file_url, stream=True)
+    resp.raise_for_status()
+    for remote_file in _from_fedora_file_lines(
+        digest_file_url, _strip_gpg_wrappers(resp.iter_lines())
+    ):
+        yield remote_file
 
 
 class Glance(MutableSet):

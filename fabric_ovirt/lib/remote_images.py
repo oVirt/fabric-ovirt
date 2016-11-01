@@ -264,3 +264,83 @@ def from_cirros():
         for href in find_hrefs_in_stream(resp)
         if rel_dir.match(href)
     )
+
+
+FEDORA_BASE = 'http://download.fedoraproject.org/pub'
+
+
+def _from_fedora_pre24(fedora_ver):
+    ck_url = (
+        FEDORA_BASE +
+        '/fedora/linux/releases/{ver}' +
+        '/Cloud/x86_64/Images/Fedora-Cloud_Images-x86_64-{ver}-CHECKSUM'
+    ).format(ver=fedora_ver)
+    regex = '^Fedora-Cloud-(?P<imgtyp>.+)-{ver}-(?P<version>.+).x86_64.qcow2$'\
+        .format(ver=fedora_ver)
+    return from_files_by_regex(
+        files=remote_files.from_http_with_fedora_file(ck_url),
+        regex=regex,
+        name='Fedora {ver} Cloud \g<imgtyp> Image v\g<version> for x86_64'
+        .format(ver=fedora_ver),
+        image_name='Fedora {ver} Cloud \g<imgtyp> Image'
+        .format(ver=fedora_ver),
+        arch='x86_64',
+    )
+
+
+def _from_fedora_post24(fedora_ver):
+    base_url = FEDORA_BASE + '/alt/atomic/stable'
+    resp = requests.get(base_url, stream=True)
+    resp.raise_for_status()
+    rel_dir = re.compile('^Fedora-Atomic-{}-(.+)/$'.format(fedora_ver))
+    regex = \
+        '^Fedora-(Cloud-)?(?P<imgtyp>.+)-{ver}-(?P<version>.+).x86_64.qcow2$'\
+        .format(ver=fedora_ver)
+    for href in find_hrefs_in_stream(resp):
+        mtc = rel_dir.match(href)
+        if not mtc:
+            continue
+        rel_ver = mtc.group(1)
+        files = remote_files.from_http_with_fedora_file(
+            base_url + '/' + href + 'CloudImages/x86_64/images/' +
+            'Fedora-CloudImages-{fedora_ver}-{rel_ver}-x86_64-CHECKSUM'
+            .format(fedora_ver=fedora_ver, rel_ver=rel_ver)
+        )
+        for img in from_files_by_regex(
+            files=files,
+            regex=regex,
+            name='Fedora {ver} Cloud \g<imgtyp> Image v\g<version> for x86_64'
+            .format(ver=fedora_ver),
+            image_name='Fedora {ver} Cloud \g<imgtyp> Image'
+            .format(ver=fedora_ver),
+            arch='x86_64',
+        ):
+            yield img
+
+
+@_image_source("Fedora 22")
+def from_fedora22():
+    return _from_fedora_pre24(22)
+
+
+@_image_source("Fedora 23")
+def from_fedora23():
+    return _from_fedora_pre24(23)
+
+
+@_image_source("Fedora 24")
+def from_fedora24():
+    return _from_fedora_post24(24)
+
+
+@_image_source("All Upstream")
+def from_all_upstream():
+    return chain(
+        from_centos6(),
+        from_centos_atomic7(),
+        from_centos7(),
+        from_cirros(),
+        from_fedora22(),
+        from_fedora23(),
+        from_fedora24(),
+    )

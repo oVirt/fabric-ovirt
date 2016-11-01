@@ -124,9 +124,11 @@ def _strip_gpg_wrappers(lines):
         pass
 
 
-def _from_digest_file_lines(digest_file_url, lines, digest_algo):
+def _from_digest_file_lines(
+    digest_file_url, lines, digest_algo, seperator=None
+):
     for line in lines:
-        digest, file_name = line.split()
+        digest, file_name = line.split(seperator)
         yield RemoteFile(
             name=file_name,
             url=urljoin(digest_file_url, file_name),
@@ -134,7 +136,9 @@ def _from_digest_file_lines(digest_file_url, lines, digest_algo):
         )
 
 
-def from_http_with_digest_file(digest_file_url, digest_algo=hashlib.sha256):
+def from_http_with_digest_file(
+    digest_file_url, digest_algo=hashlib.sha256, seperator=None
+):
     """List files in a remote HTTP directory that includes a hash digest file
 
     :param str digest_file_url:  The url of the file that lists the files in
@@ -148,7 +152,10 @@ def from_http_with_digest_file(digest_file_url, digest_algo=hashlib.sha256):
     resp = requests.get(digest_file_url, stream=True)
     resp.raise_for_status()
     for remote_file in _from_digest_file_lines(
-        digest_file_url, _strip_gpg_wrappers(resp.iter_lines()), digest_algo
+        digest_file_url,
+        _strip_gpg_wrappers(resp.iter_lines()),
+        digest_algo,
+        seperator,
     ):
         yield remote_file
 

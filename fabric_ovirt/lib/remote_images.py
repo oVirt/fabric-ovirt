@@ -333,6 +333,48 @@ def from_fedora24():
     return _from_fedora_post24(24)
 
 
+def _from_ubuntu(code_name, full_verion_name):
+    base_url = 'https://cloud-images.ubuntu.com/' + code_name
+    resp = requests.get(base_url, stream=True)
+    resp.raise_for_status()
+    rel_dir = re.compile('^[\d\.]+/')
+    return chain.from_iterable(
+        from_files_by_regex(
+            files=remote_files.from_http_with_digest_file(
+                base_url + '/' + href + 'SHA256SUMS', hashlib.sha256, ' *'
+            ),
+            regex='^{code_name}-server-cloudimg-amd64(-disk1)?.img$'.format(
+                code_name=code_name
+            ),
+            name='Ubuntu Server {fvn} Cloud Image v{build} for x86_64'.format(
+                fvn=full_verion_name, build=href[0:-1]
+            ),
+            image_name='Ubuntu Server {fvn} Cloud Image'.format(
+                fvn=full_verion_name
+            ),
+            version=href[0:-1],
+            arch='x86_64',
+        )
+        for href in find_hrefs_in_stream(resp)
+        if rel_dir.match(href)
+    )
+
+
+@_image_source("Ubuntu 14.04 LTS")
+def from_ubuntu_14_04():
+    return _from_ubuntu('trusty', '14.04 LTS (Trusty Tahr)')
+
+
+@_image_source("Ubuntu 16.04 LTS")
+def from_ubuntu_16_04():
+    return _from_ubuntu('xenial', '16.04 LTS (Xenial Xerus)')
+
+
+@_image_source("Ubuntu 16.10")
+def from_ubuntu_16_10():
+    return _from_ubuntu('yakkety', '16.10 (Yakkety Yak)')
+
+
 @_image_source("All Upstream")
 def from_all_upstream():
     return chain(
@@ -343,4 +385,7 @@ def from_all_upstream():
         from_fedora22(),
         from_fedora23(),
         from_fedora24(),
+        from_ubuntu_14_04(),
+        from_ubuntu_16_04(),
+        from_ubuntu_16_10(),
     )

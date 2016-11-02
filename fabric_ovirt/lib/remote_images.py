@@ -12,6 +12,7 @@ import hashlib
 from fabric_ovirt.lib.html import find_hrefs_in_stream
 from fabric_ovirt.lib.remote_files import RemoteFile, file_digest
 from fabric_ovirt.lib import remote_files
+from fabric_ovirt.lib.topbygroup import topbygroup
 
 # Don't let pyflakes warn about user convenience imports
 assert LooseVersion, file_digest
@@ -389,3 +390,38 @@ def from_all_upstream():
         from_ubuntu_16_04(),
         from_ubuntu_16_10(),
     )
+
+
+def top_latest(images, amount=3):
+    """Return the most recnt images from given list
+
+    :param Iterable images: A set of remote images
+    :param int amount:      How many images to return for each image_name
+
+    :returns: Images are grouped by image_name and the top 'amount' images by
+              version and revision are returned
+    :rtype: Iterator
+    """
+    return topbygroup(
+        images,
+        amount,
+        lambda img: img.image_name,
+        lambda img: img.version,
+    )
+
+
+@_image_source("Latest Upstream")
+def from_all_latest_upstream():
+    return top_latest(from_all_upstream())
+
+
+@_image_source("Missing from oVirt Glance")
+def missing_from_ovirt_glance():
+    return set(from_all_latest_upstream()) - set(from_ovirt_glance())
+
+
+@_image_source("Obsolete on oVirt Glance")
+def obsolete_on_ovirt_glance():
+    glance_all = from_ovirt_glance()
+    glance_up_to_date = top_latest(glance_all)
+    return set(glance_all) - set(glance_up_to_date)

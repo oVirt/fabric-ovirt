@@ -334,6 +334,11 @@ def from_fedora24():
     return _from_fedora_post24(24)
 
 
+@_image_source("Fedora 25")
+def from_fedora25():
+    return _from_fedora_post24(25)
+
+
 def _from_ubuntu(code_name, full_verion_name):
     base_url = 'https://cloud-images.ubuntu.com/' + code_name
     resp = requests.get(base_url, stream=True)
@@ -386,6 +391,7 @@ def from_all_upstream():
         from_fedora22(),
         from_fedora23(),
         from_fedora24(),
+        from_fedora25(),
         from_ubuntu_14_04(),
         from_ubuntu_16_04(),
         from_ubuntu_16_10(),

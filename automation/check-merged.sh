@@ -1,3 +1,1 @@
-#!/bin/bash -e
-
-tox
+check-patch.sh

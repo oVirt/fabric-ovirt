@@ -1,4 +1,1 @@
-python-tox
-git
-libxml2-devel
-libxslt-devel
+check-patch.packages

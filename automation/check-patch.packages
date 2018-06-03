@@ -1,4 +1,5 @@
 python-tox
+python-pip
 git
 libxml2-devel
 libxslt-devel

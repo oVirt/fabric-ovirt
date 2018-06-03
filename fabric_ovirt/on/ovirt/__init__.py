@@ -6,7 +6,7 @@ try:
     from ovirtsdk.api import API as oVirtApi
     assert oVirtApi
     have_ovirt_sdk = True
-except:
+except ImportError:
     warn(
         "Not enabling oVirt related tasks, install the oVirt Python SDK "
         "to get full functionality"
